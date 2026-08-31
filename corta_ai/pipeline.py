@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 import re
 import subprocess
+import sys
 
 from .highlights import TranscriptSegment, choose_highlights
 from .jobs import InMemoryJobStore
@@ -21,7 +22,7 @@ def download_video(url: str, job_dir: Path) -> Path:
     source_dir = job_dir / "source"
     source_dir.mkdir(parents=True, exist_ok=True)
     output = _run(
-        ["yt-dlp", "--no-playlist", "--restrict-filenames", "--merge-output-format", "mp4",
+        [sys.executable, "-m", "yt_dlp", "--no-playlist", "--restrict-filenames", "--merge-output-format", "mp4",
          "-f", "bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/best", "--print", "after_move:filepath",
          "-o", str(source_dir / "video.%(ext)s"), url],
         "Não foi possível baixar o vídeo",
@@ -93,10 +94,14 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         group = visible[offset:offset + 5]
         start = max(0, group[0]["start"] - clip_start)
         end = min(clip_end - clip_start, group[-1]["end"] - clip_start + 0.12)
-        karaoke = " ".join(
-            f"{{\\kf{max(1, round((word['end'] - word['start']) * 100))}}}{_ass_text(word['text']).upper()}"
-            for word in group
-        )
+        karaoke_parts: list[str] = []
+        for index, word in enumerate(group):
+            next_start = group[index + 1]["start"] if index + 1 < len(group) else word["end"]
+            highlight_duration = max(word["end"], next_start) - word["start"]
+            karaoke_parts.append(
+                f"{{\\kf{max(1, round(highlight_duration * 100))}}}{_ass_text(word['text']).upper()}"
+            )
+        karaoke = " ".join(karaoke_parts)
         lines.append(f"Dialogue: 0,{_ass_time(start)},{_ass_time(end)},Default,,0,0,0,,{karaoke}")
     destination.write_text(header + "\n".join(lines) + "\n", encoding="utf-8")
 
@@ -143,4 +148,3 @@ def process_job(job_id: str, store: InMemoryJobStore, workspace: Path) -> None:
         store.update(job_id, status="completed", progress=100, message=f"{len(outputs)} cortes prontos", outputs=outputs)
     except Exception as error:
         store.update(job_id, status="failed", message="O processamento falhou", error=str(error))
-

@@ -53,6 +53,14 @@ def test_api_rejects_invalid_job_input(tmp_path):
 
     assert response.status_code == 422
 
+    missing_video_id = request(
+        app,
+        "POST",
+        "/api/jobs",
+        json={"youtube_url": "https://youtube.com/", "clip_count": 1, "clip_duration": 30},
+    )
+    assert missing_video_id.status_code == 422
+
 
 def test_user_can_read_job_progress_and_error(tmp_path):
     app, store = make_app(tmp_path)
@@ -99,3 +107,21 @@ def test_finished_outputs_are_exposed_for_preview_and_download(tmp_path):
     assert response.json()["outputs"][0]["url"].endswith("/corte-01.mp4")
     assert video.status_code == 200
     assert video.content == b"video"
+
+    suffix = request(
+        app,
+        "GET",
+        f"/api/jobs/{created['id']}/outputs/corte-01.mp4",
+        headers={"Range": "bytes=-2"},
+    )
+    assert suffix.status_code == 206
+    assert suffix.content == b"eo"
+    assert suffix.headers["content-range"] == "bytes 3-4/5"
+
+    invalid_range = request(
+        app,
+        "GET",
+        f"/api/jobs/{created['id']}/outputs/corte-01.mp4",
+        headers={"Range": "bytes=99-100"},
+    )
+    assert invalid_range.status_code == 416

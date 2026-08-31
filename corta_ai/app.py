@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from threading import Thread
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import StreamingResponse
@@ -25,6 +25,16 @@ class CreateJobRequest(BaseModel):
         allowed = {"youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be"}
         if parsed.scheme not in {"http", "https"} or host not in allowed:
             raise ValueError("Informe uma URL válida do YouTube")
+        if host == "youtu.be":
+            video_id = parsed.path.strip("/").split("/", 1)[0]
+        elif parsed.path == "/watch":
+            video_id = parse_qs(parsed.query).get("v", [""])[0]
+        elif parsed.path.startswith(("/shorts/", "/embed/", "/live/")):
+            video_id = parsed.path.strip("/").split("/", 1)[1].split("/", 1)[0]
+        else:
+            video_id = ""
+        if not video_id:
+            raise ValueError("A URL precisa apontar para um vídeo do YouTube")
         return value
 
 
@@ -47,9 +57,27 @@ def _video_response(path: Path, request: Request, download: bool) -> StreamingRe
     status_code = 200
     range_header = request.headers.get("range")
     if range_header and range_header.startswith("bytes="):
-        requested = range_header.removeprefix("bytes=").split("-", 1)
-        start = int(requested[0] or 0)
-        end = min(int(requested[1]) if requested[1] else end, end)
+        try:
+            value = range_header.removeprefix("bytes=")
+            if "," in value or "-" not in value or size == 0:
+                raise ValueError
+            first, last = value.split("-", 1)
+            if not first:
+                suffix_length = int(last)
+                if suffix_length <= 0:
+                    raise ValueError
+                start = max(0, size - suffix_length)
+            else:
+                start = int(first)
+                end = min(int(last) if last else end, end)
+                if start >= size or end < start:
+                    raise ValueError
+        except ValueError as error:
+            raise HTTPException(
+                status_code=416,
+                detail="Intervalo de vídeo inválido",
+                headers={"Content-Range": f"bytes */{size}"},
+            ) from error
         status_code = 206
 
     async def chunks():

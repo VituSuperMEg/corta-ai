@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, field
+from copy import deepcopy
+from dataclasses import asdict, dataclass, field, fields
 from threading import Lock
 from typing import Any
 from uuid import uuid4
@@ -31,17 +32,21 @@ class InMemoryJobStore:
         job = Job(youtube_url=youtube_url, clip_count=clip_count, clip_duration=clip_duration)
         with self._lock:
             self._jobs[job.id] = job
-        return job
+        return deepcopy(job)
 
     def get(self, job_id: str) -> Job | None:
         with self._lock:
-            return self._jobs.get(job_id)
+            job = self._jobs.get(job_id)
+            return deepcopy(job) if job else None
 
     def update(self, job_id: str, **changes: Any) -> Job:
+        allowed_fields = {item.name for item in fields(Job)} - {"id"}
+        unknown_fields = changes.keys() - allowed_fields
+        if unknown_fields:
+            raise ValueError(f"Campos de trabalho inválidos: {', '.join(sorted(unknown_fields))}")
         with self._lock:
             job = self._jobs[job_id]
             for name, value in changes.items():
                 setattr(job, name, value)
-            return job
-
+            return deepcopy(job)
 

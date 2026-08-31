@@ -1,6 +1,84 @@
-const form=document.querySelector('#job-form'),view=document.querySelector('#progress-view'),results=document.querySelector('#results'),bar=document.querySelector('#progress-bar'),number=document.querySelector('#progress-number'),message=document.querySelector('#status-message'),errorBox=document.querySelector('#error-box');let timer;
-form.addEventListener('submit',async e=>{e.preventDefault();errorBox.classList.add('hidden');const button=form.querySelector('button');button.disabled=true;button.querySelector('span').textContent='Criando processamento...';try{const response=await fetch('/api/jobs',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({youtube_url:document.querySelector('#youtube-url').value,clip_count:Number(document.querySelector('#clip-count').value),clip_duration:Number(document.querySelector('#clip-duration').value)})}),data=await response.json();if(!response.ok)throw new Error(data.detail?.[0]?.msg||data.detail||'Dados inválidos');form.classList.add('hidden');view.classList.remove('hidden');poll(data.id)}catch(error){showError(error.message);button.disabled=false;button.querySelector('span').textContent='Gerar meus cortes'}});
-async function poll(id){try{const response=await fetch(`/api/jobs/${id}`);if(!response.ok)throw new Error('Não foi possível consultar o processamento');const job=await response.json();bar.style.width=`${job.progress}%`;number.textContent=`${job.progress}%`;message.textContent=job.message;if(job.status==='completed'){showResults(job);return}if(job.status==='failed'){showError(job.error||'O processamento falhou');return}timer=setTimeout(()=>poll(id),1200)}catch(error){showError(error.message);timer=setTimeout(()=>poll(id),3000)}}
-function showError(text){errorBox.textContent=text;errorBox.classList.remove('hidden')}
-function showResults(job){clearTimeout(timer);view.classList.add('hidden');results.classList.remove('hidden');document.querySelector('#clip-grid').innerHTML=job.outputs.map((clip,index)=>`<article class="clip-card"><video controls preload="metadata" src="${clip.url}"></video><div class="clip-meta"><strong>Corte ${String(index+1).padStart(2,'0')}</strong><a class="download" href="${clip.download_url}">Baixar MP4</a></div></article>`).join('')}
-document.querySelector('#new-job').addEventListener('click',()=>{results.classList.add('hidden');form.classList.remove('hidden');const button=form.querySelector('button');button.disabled=false;button.querySelector('span').textContent='Gerar meus cortes';bar.style.width='0';number.textContent='0%'});
+const form = document.querySelector("#job-form");
+const progressView = document.querySelector("#progress-view");
+const results = document.querySelector("#results");
+const progressBar = document.querySelector("#progress-bar");
+const progressNumber = document.querySelector("#progress-number");
+const statusMessage = document.querySelector("#status-message");
+const errorBox = document.querySelector("#error-box");
+let timer;
+
+function showError(text) {
+  errorBox.textContent = text;
+  errorBox.classList.remove("hidden");
+}
+
+async function poll(jobId) {
+  try {
+    const response = await fetch(`/api/jobs/${jobId}`);
+    if (!response.ok) throw new Error("Não foi possível consultar o processamento");
+    const job = await response.json();
+    progressBar.style.width = `${job.progress}%`;
+    progressNumber.textContent = `${job.progress}%`;
+    statusMessage.textContent = job.message;
+
+    if (job.status === "completed") {
+      clearTimeout(timer);
+      progressView.classList.add("hidden");
+      results.classList.remove("hidden");
+      document.querySelector("#clip-grid").innerHTML = job.outputs
+        .map((clip, index) => `<article class="clip-card">
+          <video controls preload="metadata" src="${clip.url}"></video>
+          <div class="clip-meta"><strong>Corte ${String(index + 1).padStart(2, "0")}</strong>
+          <a class="download" href="${clip.download_url}">Baixar MP4</a></div></article>`)
+        .join("");
+      return;
+    }
+    if (job.status === "failed") {
+      showError(job.error || "O processamento falhou");
+      return;
+    }
+    timer = setTimeout(() => poll(jobId), 1200);
+  } catch (error) {
+    showError(error.message);
+    timer = setTimeout(() => poll(jobId), 3000);
+  }
+}
+
+form.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  errorBox.classList.add("hidden");
+  const button = form.querySelector("button");
+  button.disabled = true;
+  button.querySelector("span").textContent = "Criando processamento...";
+
+  try {
+    const response = await fetch("/api/jobs", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        youtube_url: document.querySelector("#youtube-url").value,
+        clip_count: Number(document.querySelector("#clip-count").value),
+        clip_duration: Number(document.querySelector("#clip-duration").value),
+      }),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.detail?.[0]?.msg || data.detail || "Dados inválidos");
+    form.classList.add("hidden");
+    progressView.classList.remove("hidden");
+    poll(data.id);
+  } catch (error) {
+    showError(error.message);
+    button.disabled = false;
+    button.querySelector("span").textContent = "Gerar meus cortes";
+  }
+});
+
+document.querySelector("#new-job").addEventListener("click", () => {
+  results.classList.add("hidden");
+  form.classList.remove("hidden");
+  const button = form.querySelector("button");
+  button.disabled = false;
+  button.querySelector("span").textContent = "Gerar meus cortes";
+  progressBar.style.width = "0";
+  progressNumber.textContent = "0%";
+});
