@@ -97,7 +97,8 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         karaoke_parts: list[str] = []
         for index, word in enumerate(group):
             next_start = group[index + 1]["start"] if index + 1 < len(group) else word["end"]
-            highlight_duration = max(word["end"], next_start) - word["start"]
+            visible_start = max(word["start"], clip_start)
+            highlight_duration = max(word["end"], next_start) - visible_start
             karaoke_parts.append(
                 f"{{\\kf{max(1, round(highlight_duration * 100))}}}{_ass_text(word['text']).upper()}"
             )
