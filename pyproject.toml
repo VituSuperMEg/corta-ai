@@ -1,0 +1,10 @@
+[project]
+name = "corta-ai"
+version = "0.1.0"
+description = "Gerador local de cortes verticais com legendas"
+requires-python = ">=3.10"
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+
