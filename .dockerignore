@@ -1,0 +1,7 @@
+*
+!Dockerfile
+!requirements.txt
+!corta_ai/
+!corta_ai/**
+**/__pycache__/
+**/*.pyc

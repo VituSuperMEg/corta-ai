@@ -12,7 +12,7 @@ chmod +x iniciar.sh
 ./iniciar.sh
 ```
 
-Abra <http://127.0.0.1:8000>. Na primeira execução, o modelo Whisper `small` será baixado. Ele fica em cache e o processamento posterior é local.
+Abra <http://127.0.0.1:5002>. Na primeira execução, o modelo Whisper `small` será baixado. Ele fica em cache e o processamento posterior é local.
 
 O sistema baixa um único vídeo, transcreve em português, seleciona janelas não repetidas, converte para 1080×1920, normaliza o áudio e incorpora legendas animadas. Os resultados ficam em `workspace/<id>/outputs/`.
 

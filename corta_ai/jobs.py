@@ -18,6 +18,8 @@ class Job:
     message: str = "Na fila"
     error: str | None = None
     outputs: list[str] = field(default_factory=list)
+    stylish_captions: bool = False
+    varied_fonts: bool = False
 
     def as_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -28,8 +30,9 @@ class InMemoryJobStore:
         self._jobs: dict[str, Job] = {}
         self._lock = Lock()
 
-    def create(self, youtube_url: str, clip_count: int, clip_duration: int) -> Job:
-        job = Job(youtube_url=youtube_url, clip_count=clip_count, clip_duration=clip_duration)
+    def create(self, youtube_url: str, clip_count: int, clip_duration: int, stylish_captions: bool = False, varied_fonts: bool = False) -> Job:
+        job = Job(youtube_url=youtube_url, clip_count=clip_count, clip_duration=clip_duration,
+                  stylish_captions=stylish_captions, varied_fonts=varied_fonts)
         with self._lock:
             self._jobs[job.id] = job
         return deepcopy(job)
@@ -49,4 +52,3 @@ class InMemoryJobStore:
             for name, value in changes.items():
                 setattr(job, name, value)
             return deepcopy(job)
-

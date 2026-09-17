@@ -52,6 +52,16 @@ form.addEventListener("submit", async (event) => {
   button.querySelector("span").textContent = "Criando processamento...";
 
   try {
+    const stylishCaptions = document.querySelector("#stylish-captions").checked;
+    const variedFonts = document.querySelector("#varied-fonts").checked;
+    if (stylishCaptions || variedFonts) {
+      const capabilities = await fetch("/openapi.json", { cache: "no-store" });
+      const schema = capabilities.ok ? await capabilities.json() : null;
+      const properties = schema?.components?.schemas?.CreateJobRequest?.properties;
+      if (!properties?.varied_fonts || !properties?.stylish_captions) {
+        throw new Error("O servidor ainda não carregou as opções de legenda. Reinicie o Corta Aí e atualize esta página antes de gerar.");
+      }
+    }
     const response = await fetch("/api/jobs", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -59,10 +69,15 @@ form.addEventListener("submit", async (event) => {
         youtube_url: document.querySelector("#youtube-url").value,
         clip_count: Number(document.querySelector("#clip-count").value),
         clip_duration: Number(document.querySelector("#clip-duration").value),
+        stylish_captions: stylishCaptions,
+        varied_fonts: variedFonts,
       }),
     });
     const data = await response.json();
     if (!response.ok) throw new Error(data.detail?.[0]?.msg || data.detail || "Dados inválidos");
+    if (data.stylish_captions !== stylishCaptions || data.varied_fonts !== variedFonts) {
+      throw new Error("O processamento não confirmou as opções selecionadas. Reinicie o Corta Aí e atualize esta página.");
+    }
     form.classList.add("hidden");
     progressView.classList.remove("hidden");
     poll(data.id);

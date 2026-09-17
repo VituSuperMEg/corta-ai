@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 from pathlib import Path
-from threading import Thread
+from concurrent.futures import ThreadPoolExecutor
+from contextlib import asynccontextmanager
+import os
+from threading import BoundedSemaphore
 from urllib.parse import parse_qs, urlparse
 
 from fastapi import FastAPI, HTTPException, Request
@@ -16,6 +19,8 @@ class CreateJobRequest(BaseModel):
     youtube_url: str
     clip_count: int = Field(ge=1, le=20)
     clip_duration: int = Field(ge=15, le=180)
+    stylish_captions: bool = False
+    varied_fonts: bool = False
 
     @field_validator("youtube_url")
     @classmethod
@@ -107,26 +112,49 @@ def create_app(
     workspace: Path | None = None,
     run_jobs: bool = True,
 ) -> FastAPI:
-    app = FastAPI(title="Corta Aí", version="0.1.0")
+    executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="video")
+    slots = BoundedSemaphore(int(os.environ.get("MAX_PENDING_JOBS", "5")))
+
+    @asynccontextmanager
+    async def lifespan(app):
+        yield
+        executor.shutdown(wait=False, cancel_futures=True)
+
+    app = FastAPI(title="Corta Aí", version="0.1.0", lifespan=lifespan)
     app.state.store = store or InMemoryJobStore()
-    app.state.workspace = Path(workspace or "workspace").resolve()
+    app.state.workspace = Path(workspace or os.environ.get("WORKSPACE_DIR", "workspace")).resolve()
     app.state.workspace.mkdir(parents=True, exist_ok=True)
+
+    @app.get("/healthz")
+    async def health():
+        return {"status": "ok"}
 
     @app.post("/api/jobs", status_code=202)
     async def create_job(request: CreateJobRequest):
+        if run_jobs and not slots.acquire(blocking=False):
+            raise HTTPException(status_code=429, detail="A fila está cheia. Tente novamente em alguns minutos.")
         job = app.state.store.create(
             youtube_url=request.youtube_url,
             clip_count=request.clip_count,
             clip_duration=request.clip_duration,
+            stylish_captions=request.stylish_captions,
+            varied_fonts=request.varied_fonts,
         )
         if run_jobs:
             from .pipeline import process_job
 
-            Thread(
-                target=process_job,
-                args=(job.id, app.state.store, app.state.workspace),
-                daemon=True,
-            ).start()
+            def run():
+                try:
+                    process_job(job.id, app.state.store, app.state.workspace)
+                finally:
+                    slots.release()
+
+            try:
+                executor.submit(run)
+            except RuntimeError:
+                slots.release()
+                app.state.store.update(job.id, status="failed", error="Servidor reiniciando")
+                raise HTTPException(status_code=503, detail="Servidor reiniciando. Tente novamente.")
         return _serialize(job)
 
     @app.get("/api/jobs/{job_id}")

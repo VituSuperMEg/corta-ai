@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 import re
 import subprocess
@@ -46,7 +47,8 @@ def transcribe(path: Path) -> tuple[list[TranscriptSegment], list[dict]]:
         from faster_whisper import WhisperModel
     except ImportError as error:
         raise RuntimeError("O faster-whisper não está instalado. Execute ./iniciar.sh.") from error
-    model = WhisperModel("small", device="cpu", compute_type="int8")
+    model = WhisperModel(os.environ.get("WHISPER_MODEL", "small"), device="cpu", compute_type="int8",
+                         cpu_threads=int(os.environ.get("CPU_THREADS", "2")))
     raw_segments, _ = model.transcribe(
         str(path), language="pt", vad_filter=True, word_timestamps=True, beam_size=5
     )
@@ -73,7 +75,62 @@ def _ass_text(value: str) -> str:
     return re.sub(r"[{}]", "", value).replace("\\", "")
 
 
-def create_ass(words: list[dict], clip_start: float, clip_end: float, destination: Path) -> None:
+def _stylish_events(words: list[dict], clip_start: float, clip_end: float, varied_fonts: bool = False) -> list[str]:
+    """Alternate short phrases and punch words using the transcription's timings."""
+    groups: list[list[dict]] = []
+    for word in words:
+        if word["end"] <= word["start"] or not word["text"].strip():
+            continue
+        if (not groups or len(groups[-1]) >= 3
+                or sum(len(item["text"]) + 1 for item in groups[-1]) + len(word["text"]) > 24
+                or word["start"] - groups[-1][-1]["end"] > 0.35
+                or groups[-1][-1]["text"].endswith((".", "!", "?", ";"))):
+            groups.append([])
+        groups[-1].append(word)
+
+    lines: list[str] = []
+    for group_index, group in enumerate(groups):
+        variant = group_index % 3
+        font, font_size, weight = (
+            ("Poppins ExtraBold", 70, 800),
+            ("Barlow Condensed ExtraBold", 84, 800),
+            ("Bebas Neue", 112, 400),
+        )[variant]
+        if not varied_fonts:
+            font, font_size, weight = "Arial", 100 if variant == 2 else 76, 700
+        typography = f"\\fn{font}\\b{weight}"
+        color = ("&H003EFFD8&", "&H00FFDD55&", "&H008B79FF&")[variant]
+        for index, word in enumerate(group):
+            start = max(clip_start, word["start"])
+            end = min(clip_end, word["end"])
+            if index + 1 < len(group):
+                end = min(end, group[index + 1]["start"])
+            if round((end - clip_start) * 100) <= round((start - clip_start) * 100):
+                continue
+            duration_ms = max(1, round((end - start) * 1000))
+            settle = min(110, duration_ms)
+            text = _ass_text(word["text"]).upper()
+            if variant == 2:
+                size = min(font_size, int(850 / max(1, len(text)) / 0.75))
+                body = (f"{{{typography}\\an2\\pos(540,1690)\\fs{size}\\1c{color}\\bord8"
+                        f"\\fscx115\\fscy115\\t(0,{settle},\\fscx100\\fscy100)}}{text}")
+            else:
+                # Keep a fixed phrase layout while only the spoken word changes color.
+                phrase = " ".join(
+                    f"{{\\1c{color if i == index else '&H00FFFFFF&'}}}{_ass_text(item['text']).upper()}"
+                    for i, item in enumerate(group)
+                )
+                if variant == 0:
+                    animation = f"\\fscx94\\fscy94\\t(0,{settle},\\fscx100\\fscy100)"
+                else:
+                    animation = f"\\blur1\\shad3\\4c{color}"
+                body = f"{{{typography}\\an2\\pos(540,1690)\\fs{font_size}\\bord6{animation}}}{phrase}"
+            lines.append(f"Dialogue: 0,{_ass_time(start - clip_start)},{_ass_time(end - clip_start)},Default,,0,0,0,,{body}")
+    return lines
+
+
+def create_ass(words: list[dict], clip_start: float, clip_end: float, destination: Path,
+               stylish_captions: bool = False, varied_fonts: bool = False) -> None:
     visible = [word for word in words if word["end"] > clip_start and word["start"] < clip_end]
     header = """[Script Info]
 ScriptType: v4.00+
@@ -90,6 +147,10 @@ Style: Default,Arial,72,&H00FFFFFF,&H0000E8FF,&H00101010,&H70000000,-1,0,0,0,100
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """
     lines: list[str] = []
+    if stylish_captions:
+        lines = _stylish_events(visible, clip_start, clip_end, varied_fonts)
+        destination.write_text(header + "\n".join(lines) + "\n", encoding="utf-8")
+        return
     for offset in range(0, len(visible), 5):
         group = visible[offset:offset + 5]
         start = max(0, group[0]["start"] - clip_start)
@@ -103,13 +164,20 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                 f"{{\\kf{max(1, round(highlight_duration * 100))}}}{_ass_text(word['text']).upper()}"
             )
         karaoke = " ".join(karaoke_parts)
+        if varied_fonts:
+            font, weight = (("Poppins ExtraBold", 800), ("Barlow Condensed ExtraBold", 800),
+                            ("Bebas Neue", 400))[(offset // 5) % 3]
+            karaoke = f"{{\\fn{font}\\b{weight}}}" + karaoke
         lines.append(f"Dialogue: 0,{_ass_time(start)},{_ass_time(end)},Default,,0,0,0,,{karaoke}")
     destination.write_text(header + "\n".join(lines) + "\n", encoding="utf-8")
 
 
 def render_clip(source: Path, subtitles: Path, start: float, duration: int, output: Path) -> None:
     subtitle_filter = str(subtitles).replace("\\", "/").replace(":", "\\:").replace("'", "\\'")
-    video_filter = "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920," + f"ass='{subtitle_filter}'"
+    fonts_dir = str(Path(__file__).resolve().parent / "static" / "fonts")
+    fonts_filter = fonts_dir.replace("\\", "/").replace(":", "\\:").replace("'", "\\'")
+    video_filter = ("scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,"
+                    + f"ass='{subtitle_filter}':fontsdir='{fonts_filter}'")
     _run(
         ["ffmpeg", "-y", "-ss", f"{start:.3f}", "-i", str(source), "-t", str(duration),
          "-vf", video_filter, "-c:v", "libx264", "-preset", "medium", "-crf", "20",
@@ -143,7 +211,8 @@ def process_job(job_id: str, store: InMemoryJobStore, workspace: Path) -> None:
             progress(55 + round((index - 1) / len(highlights) * 40), f"Renderizando corte {index} de {len(highlights)}")
             subtitle_path = job_dir / f"legenda-{index:02d}.ass"
             output_name = f"corte-{index:02d}.mp4"
-            create_ass(words, highlight.start, highlight.end, subtitle_path)
+            create_ass(words, highlight.start, highlight.end, subtitle_path,
+                       stylish_captions=job.stylish_captions, varied_fonts=job.varied_fonts)
             render_clip(source, subtitle_path, highlight.start, job.clip_duration, output_dir / output_name)
             outputs.append(output_name)
         store.update(job_id, status="completed", progress=100, message=f"{len(outputs)} cortes prontos", outputs=outputs)

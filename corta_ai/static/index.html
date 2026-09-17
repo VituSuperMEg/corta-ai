@@ -1,13 +1,22 @@
 <!doctype html>
 <html lang="pt-BR">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#090b10"><title>Corta Aí — cortes verticais</title><link rel="stylesheet" href="/styles.css"></head>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#090b10"><title>Corta Aí — cortes verticais</title><link rel="stylesheet" href="/styles.css?v=fonts-1"></head>
 <body><div class="glow one"></div><div class="glow two"></div><main class="shell">
 <header><a class="brand" href="/"><span>CA</span>Corta Aí</a><div class="local"><i></i>100% local</div></header>
 <section class="hero"><p class="eyebrow">YOUTUBE → SHORTS, REELS E TIKTOK</p><h1>Um vídeo longo.<br><em>Vários cortes prontos.</em></h1><p class="lead">Cole o link, escolha quantos cortes quer e deixe o processamento local cuidar do vídeo, áudio e legendas.</p></section>
 <section class="panel">
-<form id="job-form"><label><span>URL do YouTube</span><input id="youtube-url" type="url" required placeholder="https://youtube.com/watch?v=..."></label><div class="fields"><label><span>Quantidade de cortes</span><input id="clip-count" type="number" min="1" max="20" value="3" required></label><label><span>Duração de cada corte</span><select id="clip-duration"><option value="30">30 segundos</option><option value="45" selected>45 segundos</option><option value="60">60 segundos</option><option value="90">90 segundos</option></select></label></div><button type="submit"><span>Gerar meus cortes</span><b>→</b></button><p class="legal">Use somente vídeos que você tem autorização para reutilizar.</p></form>
-<section id="progress-view" class="progress-view hidden" aria-live="polite"><div class="status-row"><div><p class="eyebrow">PROCESSANDO</p><h2 id="status-message">Preparando...</h2></div><strong id="progress-number">0%</strong></div><div class="progress-track"><div id="progress-bar"></div></div><p class="hint">Mantenha esta página aberta. Tudo acontece neste computador.</p><div id="error-box" class="error hidden"></div></section>
+<form id="job-form"><label><span>URL do YouTube</span><input id="youtube-url" type="url" required placeholder="https://youtube.com/watch?v=..."></label><div class="fields"><label><span>Quantidade de cortes</span><input id="clip-count" type="number" min="1" max="20" value="3" required></label><label><span>Duração de cada corte</span><select id="clip-duration"><option value="30">30 segundos</option><option value="45" selected>45 segundos</option><option value="60">60 segundos</option><option value="90">90 segundos</option></select></label></div>
+<div class="caption-option">
+<label class="caption-toggle"><input id="stylish-captions" type="checkbox" aria-describedby="caption-description"><span>Legendas estilosas<small id="caption-description">Destaque por palavra, neon e zoom sincronizados com a fala.</small></span></label>
+</div>
+<div class="caption-option">
+<label class="caption-toggle"><input id="varied-fonts" type="checkbox" aria-describedby="fonts-description"><span>Variar fontes<small id="fonts-description">Alterne entre Poppins, Barlow Condensed e Bebas Neue. Funciona com ou sem os efeitos de legenda.</small></span></label>
+<div class="caption-samples" aria-hidden="true"><div><strong class="sample-pop">ESSE <em>MOMENTO</em></strong><small>Poppins · destaque</small></div><div><strong class="sample-neon">FICOU <em>INCRÍVEL</em></strong><small>Barlow · neon</small></div><div><strong class="sample-punch">UAU!</strong><small>Bebas Neue · zoom</small></div></div>
+<p class="caption-note">Exemplos de estilo · ative para aplicar aos seus cortes.</p>
+</div><button type="submit"><span>Gerar meus cortes</span><b>→</b></button><p class="legal">Use somente vídeos que você tem autorização para reutilizar.</p></form>
+<section id="progress-view" class="progress-view hidden" aria-live="polite"><div class="status-row"><div><p class="eyebrow">PROCESSANDO</p><h2 id="status-message">Preparando...</h2></div><strong id="progress-number">0%</strong></div><div class="progress-track"><div id="progress-bar"></div></div><p class="hint">Mantenha esta página aberta. Tudo acontece neste computador.</p></section>
+<div id="error-box" class="error hidden" role="alert"></div>
 </section>
 <section id="results" class="results hidden"><div class="results-head"><div><p class="eyebrow">EXPORTAÇÃO CONCLUÍDA</p><h2>Seus cortes estão prontos.</h2></div><button id="new-job" class="secondary">Novo vídeo</button></div><div id="clip-grid" class="clip-grid"></div></section>
 <footer><span>FFmpeg</span><span>Whisper local</span><span>1080 × 1920</span><span>Áudio normalizado</span></footer>
-</main><script src="/app.js"></script></body></html>
+</main><script src="/app.js?v=options-3"></script></body></html>

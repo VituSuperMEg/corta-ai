@@ -1,4 +1,5 @@
 import asyncio
+from threading import Event
 
 from httpx import ASGITransport, AsyncClient
 
@@ -6,10 +7,45 @@ from corta_ai.app import create_app
 from corta_ai.jobs import InMemoryJobStore
 
 
+def test_cloud_queue_rejects_excess_work_while_processing(tmp_path, monkeypatch):
+    from corta_ai import pipeline
+
+    started = Event()
+    release = Event()
+
+    def process(*args):
+        started.set()
+        release.wait(timeout=5)
+
+    monkeypatch.setenv("MAX_PENDING_JOBS", "1")
+    monkeypatch.setattr(pipeline, "process_job", process)
+    app = create_app(workspace=tmp_path)
+    payload = {"youtube_url": "https://youtu.be/example", "clip_count": 1, "clip_duration": 30}
+    try:
+        assert request(app, "GET", "/healthz").json() == {"status": "ok"}
+        assert request(app, "POST", "/api/jobs", json=payload).status_code == 202
+        assert started.wait(timeout=2)
+        assert request(app, "POST", "/api/jobs", json=payload).status_code == 429
+    finally:
+        release.set()
+
+
 def make_app(tmp_path):
     store = InMemoryJobStore()
     app = create_app(store=store, workspace=tmp_path, run_jobs=False)
     return app, store
+
+
+def test_stylish_caption_choice_is_stored_and_defaults_off(tmp_path):
+    app, store = make_app(tmp_path)
+    payload = {"youtube_url": "https://youtu.be/example", "clip_count": 1, "clip_duration": 30}
+    default = request(app, "POST", "/api/jobs", json=payload)
+    assert default.json()["stylish_captions"] is False
+    enabled = request(app, "POST", "/api/jobs", json={**payload, "stylish_captions": True})
+    assert enabled.status_code == 202
+    job_id = enabled.json()["id"]
+    assert store.get(job_id).stylish_captions is True
+    assert request(app, "GET", f"/api/jobs/{job_id}").json()["stylish_captions"] is True
 
 
 def request(app, method, url, **kwargs):
@@ -125,3 +161,34 @@ def test_finished_outputs_are_exposed_for_preview_and_download(tmp_path):
         headers={"Range": "bytes=99-100"},
     )
     assert invalid_range.status_code == 416
+
+
+def test_requested_stylish_captions_reach_rendered_subtitles(tmp_path, monkeypatch):
+    from corta_ai import pipeline
+    from corta_ai.highlights import TranscriptSegment
+
+    app, store = make_app(tmp_path)
+    created = request(app, "POST", "/api/jobs", json={
+        "youtube_url": "https://youtu.be/example", "clip_count": 1,
+        "clip_duration": 15, "stylish_captions": True,
+    }).json()
+    words = [{"start": i * .5, "end": i * .5 + .4, "text": f"fala{i}"}
+             for i in range(9)]
+    monkeypatch.setattr(pipeline, "download_video", lambda *args: tmp_path / "source.mp4")
+    monkeypatch.setattr(pipeline, "video_duration", lambda *args: 15)
+    monkeypatch.setattr(pipeline, "transcribe", lambda *args: (
+        [TranscriptSegment(0, 15, "Uma frase para o corte.")], words))
+    subtitles_seen = []
+
+    def render(source, subtitles, start, duration, output):
+        subtitles_seen.append(subtitles.read_text())
+        output.write_bytes(b"video")
+
+    monkeypatch.setattr(pipeline, "render_clip", render)
+    pipeline.process_job(created["id"], store, tmp_path)
+    assert store.get(created["id"]).status == "completed"
+    assert len(subtitles_seen) == 1
+    assert r"\fscx94" in subtitles_seen[0]
+    assert r"\blur1" in subtitles_seen[0]
+    assert r"\fscx115" in subtitles_seen[0]
+    assert r"\kf" not in subtitles_seen[0]
