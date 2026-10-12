@@ -10,6 +10,8 @@ from urllib.parse import parse_qs, urlparse
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
+from typing import Literal
+
 from pydantic import BaseModel, Field, field_validator
 
 from .jobs import InMemoryJobStore, Job
@@ -21,6 +23,46 @@ class CreateJobRequest(BaseModel):
     clip_duration: int = Field(ge=15, le=180)
     stylish_captions: bool = False
     varied_fonts: bool = False
+    smooth_zoom: bool = False
+    clip_progress: bool = False
+    opening_title: bool = False
+    sound_effects: bool = False
+    hook_start: bool = False
+    end_cta: bool = False
+    camera_cuts: bool = False
+    censor: bool = False
+    caption_emoji: bool = False
+    background_music: bool = False
+    energy_score: bool = False
+    suggestions: bool = False
+    caption_position: Literal["top", "center", "bottom"] = "bottom"
+    floating_captions: bool = False
+    director: Literal["off", "nvidia", "ollama"] = "off"
+    title_text: str = Field(default="", max_length=60)
+    sfx_hook: bool = False
+    sfx_whoosh: bool = False
+    sfx_riser: bool = False
+    fx_hook: bool = False
+    fx_shake: bool = False
+    fx_flash: bool = False
+    fx_keyword: bool = False
+    fx_vignette: bool = False
+    ncs_credit: bool = False
+    speed_ramp: bool = False
+    freeze_climax: bool = False
+    music_track: str = Field(default="", max_length=120)
+    music_volume: int = Field(default=35, ge=0, le=100)
+
+    @field_validator("music_track")
+    @classmethod
+    def validate_music_track(cls, value: str) -> str:
+        if not value:
+            return ""
+        from .library import list_music
+
+        if Path(value).name != value or value not in list_music():
+            raise ValueError("Faixa de música não encontrada na pasta de assets")
+        return value
 
     @field_validator("youtube_url")
     @classmethod
@@ -129,6 +171,13 @@ def create_app(
     async def health():
         return {"status": "ok"}
 
+    @app.get("/api/music")
+    async def music_library():
+        from .library import list_music
+
+        return {"tracks": [{"value": "", "label": "Lo-fi sintetizada"}] +
+                [{"value": name, "label": Path(name).stem} for name in list_music()]}
+
     @app.post("/api/jobs", status_code=202)
     async def create_job(request: CreateJobRequest):
         if run_jobs and not slots.acquire(blocking=False):
@@ -139,6 +188,35 @@ def create_app(
             clip_duration=request.clip_duration,
             stylish_captions=request.stylish_captions,
             varied_fonts=request.varied_fonts,
+            smooth_zoom=request.smooth_zoom,
+            clip_progress=request.clip_progress,
+            opening_title=request.opening_title,
+            sound_effects=request.sound_effects,
+            hook_start=request.hook_start,
+            end_cta=request.end_cta,
+            title_text=request.title_text,
+            camera_cuts=request.camera_cuts,
+            censor=request.censor,
+            caption_emoji=request.caption_emoji,
+            background_music=request.background_music,
+            energy_score=request.energy_score,
+            suggestions=request.suggestions,
+            caption_position=request.caption_position,
+            floating_captions=request.floating_captions,
+            director=request.director,
+            sfx_hook=request.sfx_hook,
+            sfx_whoosh=request.sfx_whoosh,
+            sfx_riser=request.sfx_riser,
+            fx_hook=request.fx_hook,
+            fx_shake=request.fx_shake,
+            fx_flash=request.fx_flash,
+            fx_keyword=request.fx_keyword,
+            fx_vignette=request.fx_vignette,
+            ncs_credit=request.ncs_credit,
+            speed_ramp=request.speed_ramp,
+            freeze_climax=request.freeze_climax,
+            music_track=request.music_track,
+            music_volume=request.music_volume,
         )
         if run_jobs:
             from .pipeline import process_job
